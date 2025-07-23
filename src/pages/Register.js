@@ -28,21 +28,21 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
 
     setLoading(true);
-    
+
     try {
       const result = await register({
         name: formData.name,
         email: formData.email,
         password: formData.password
       });
-      
+
       if (result.success) {
         toast.success('Account created successfully!');
       } else {
@@ -194,6 +194,23 @@ const Register = () => {
             </div>
           </form>
         </motion.div>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800"
+        >
+          <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium mb-1">
+            Registration Instructions:
+          </p>
+          <p className="text-xs text-yellow-700 dark:text-yellow-300 leading-relaxed">
+            <strong>Name:</strong> 2–50 characters long, letters only.<br />
+            <strong>Email:</strong> Must be valid (e.g., you@example.com).<br />
+            <strong>Username (optional):</strong> 3–20 characters, use letters, numbers, or underscores.<br />
+            <strong>Password:</strong> At least 6 characters, One uppercase letter.
+          </p>
+        </motion.div>
+
       </motion.div>
     </div>
   );
