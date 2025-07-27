@@ -48,25 +48,29 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (credentials) => {
     try {
-      const { user: userData, token } = await authAPI.login(credentials);
+      const response = await authAPI.login(credentials);
+      const { user: userData, token } = response;
       Cookies.set('token', token, { expires: 7 });
       setUser(userData);
       setIsAuthenticated(true);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message };
+      const errorMessage = error.response?.data?.message || error.message;
+      return { success: false, error: errorMessage };
     }
   };
 
   const register = async (userData) => {
     try {
-      const { user: newUser, token } = await authAPI.register(userData);
+      const response = await authAPI.register(userData);
+      const { user: newUser, token } = response;
       Cookies.set('token', token, { expires: 7 });
       setUser(newUser);
       setIsAuthenticated(true);
       return { success: true };
     } catch (error) {
-      return { success: false, error: error.message };
+      const errorMessage = error.response?.data?.message || error.message;
+      return { success: false, error: errorMessage };
     }
   };
 

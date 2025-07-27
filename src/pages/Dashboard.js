@@ -6,6 +6,7 @@ import { Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useNotifications } from '../contexts/NotificationContext';
+import { chatAPI, userAPI } from '../services/api';
 
 // Components
 import Sidebar from '../components/sidebar/Sidebar';
@@ -20,6 +21,8 @@ const Dashboard = () => {
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [chats, setChats] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoadingChats, setIsLoadingChats] = useState(false);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
   
   // Modal states
   const [showCallModal, setShowCallModal] = useState(false);
@@ -37,104 +40,75 @@ const Dashboard = () => {
   const { socket, onlineUsers } = useSocket();
   const { inAppNotifications, showNotification } = useNotifications();
 
-  // Enhanced mock chat data with more realistic features
+  // Load chats from API
   useEffect(() => {
-    const mockChats = [
-      {
-        id: '1',
-        name: 'John Doe',
-        type: 'private',
-        avatar: null,
-        members: [
-          { id: user?.id, name: user?.name, online: true },
-          { id: 'john-doe', name: 'John Doe', online: true }
-        ],
-        lastMessage: {
-          id: 'msg1',
-          text: 'Hey! How are you doing? 😊',
-          sender: { id: 'john-doe', name: 'John Doe' },
-          timestamp: new Date(Date.now() - 300000),
-          type: 'text'
-        },
-        unreadCount: 2,
-        isPinned: true,
-        isMuted: false,
-        isArchived: false,
-        isTyping: false
-      },
-      {
-        id: '2',
-        name: 'ChatNest Team',
-        type: 'group',
-        avatar: null,
-        members: [
-          { id: user?.id, name: user?.name, online: true },
-          { id: 'alice', name: 'Alice Johnson', online: true },
-          { id: 'bob', name: 'Bob Smith', online: false },
-          { id: 'charlie', name: 'Charlie Brown', online: true }
-        ],
-        lastMessage: {
-          id: 'msg2',
-          text: 'Great work everyone! 🎉 The new features are looking amazing!',
-          sender: { id: 'alice', name: 'Alice Johnson' },
-          timestamp: new Date(Date.now() - 600000),
-          type: 'text'
-        },
-        unreadCount: 0,
-        isPinned: false,
-        isMuted: false,
-        isArchived: false,
-        isTyping: true
-      },
-      {
-        id: '3',
-        name: 'Sarah Wilson',
-        type: 'private',
-        avatar: null,
-        members: [
-          { id: user?.id, name: user?.name, online: true },
-          { id: 'sarah', name: 'Sarah Wilson', online: false }
-        ],
-        lastMessage: {
-          id: 'msg3',
-          text: 'Thanks for the help with the project! 🙏',
-          sender: { id: user?.id, name: user?.name },
-          timestamp: new Date(Date.now() - 86400000),
-          type: 'text'
-        },
-        unreadCount: 0,
-        isPinned: false,
-        isMuted: true,
-        isArchived: false,
-        isTyping: false
-      },
-      {
-        id: '4',
-        name: 'Design Team',
-        type: 'group',
-        avatar: null,
-        members: [
-          { id: user?.id, name: user?.name, online: true },
-          { id: 'designer1', name: 'Emma Davis', online: true },
-          { id: 'designer2', name: 'Mike Johnson', online: false }
-        ],
-        lastMessage: {
-          id: 'msg4',
-          text: 'New mockups are ready for review 🎨',
-          sender: { id: 'designer1', name: 'Emma Davis' },
-          timestamp: new Date(Date.now() - 1800000),
-          type: 'text'
-        },
-        unreadCount: 5,
-        isPinned: false,
-        isMuted: false,
-        isArchived: false,
-        isTyping: false
-      }
-    ];
-
-    setChats(mockChats);
+    if (user) {
+      loadChats();
+    }
   }, [user]);
+
+  const loadChats = async () => {
+    try {
+      setIsLoadingChats(true);
+      const response = await chatAPI.getChats();
+      if (response.data.success) {
+        const transformedChats = response.data.chats.map(chat => ({
+          id: chat._id,
+          name: getChatDisplayName(chat),
+          type: chat.type,
+          avatar: chat.avatar,
+          members: chat.participants?.map(p => ({
+            id: p.user._id || p.user,
+            name: p.user.name || 'Unknown',
+            online: p.user.isOnline || false
+          })) || [],
+          lastMessage: chat.lastMessage ? {
+            id: chat.lastMessage._id,
+            text: chat.lastMessage.content,
+            sender: {
+              id: chat.lastMessage.sender._id || chat.lastMessage.sender,
+              name: chat.lastMessage.sender.name || 'Unknown'
+            },
+            timestamp: new Date(chat.lastMessage.createdAt),
+            type: chat.lastMessage.type || 'text'
+          } : null,
+          unreadCount: chat.unreadCount || 0,
+          isPinned: chat.isPinned || false,
+          isMuted: chat.isMuted || false,
+          isArchived: chat.isArchived || false,
+          isTyping: false,
+          updatedAt: new Date(chat.updatedAt)
+        }));
+        
+        // Sort chats by last activity
+        transformedChats.sort((a, b) => {
+          const aTime = a.lastMessage?.timestamp || a.updatedAt;
+          const bTime = b.lastMessage?.timestamp || b.updatedAt;
+          return new Date(bTime) - new Date(aTime);
+        });
+        
+        setChats(transformedChats);
+      }
+    } catch (error) {
+      console.error('Failed to load chats:', error);
+      // Fallback to empty state
+      setChats([]);
+    } finally {
+      setIsLoadingChats(false);
+    }
+  };
+
+  const getChatDisplayName = (chat) => {
+    if (chat.type === 'group') {
+      return chat.name || 'Group Chat';
+    } else {
+      // For private chats, find the other participant
+      const otherParticipant = chat.participants?.find(p => 
+        (p.user._id || p.user) !== user?.id
+      );
+      return otherParticipant?.user?.name || 'Unknown User';
+    }
+  };
 
   // Handle room ID from URL
   useEffect(() => {
@@ -197,94 +171,143 @@ const Dashboard = () => {
   };
 
   const handleCreateGroup = async (groupData) => {
+    if (isCreatingChat) return;
+    
     try {
-      // Mock group creation - replace with real API call
-      const newGroup = {
-        id: `group-${Date.now()}`,
-        name: groupData.name,
+      setIsCreatingChat(true);
+      
+      // Use real API to create group chat
+      const createData = {
         type: 'group',
+        name: groupData.name,
         description: groupData.description,
-        avatar: groupData.icon,
-        members: [
-          { id: user?.id, name: user?.name, online: true, role: 'admin' },
-          ...groupData.members
-        ],
-        lastMessage: {
-          id: 'system-msg',
-          text: `${user?.name} created the group`,
-          sender: { id: 'system', name: 'System' },
-          timestamp: new Date(),
-          type: 'system'
-        },
-        unreadCount: 0,
-        isPinned: false,
-        isMuted: false,
-        isArchived: false,
-        isTyping: false
+        participants: groupData.members?.map(member => member.id) || []
       };
 
-      setChats(prev => [newGroup, ...prev]);
+      const response = await chatAPI.createGroupChat(createData);
       
-      // Show success notification
-      showNotification({
-        type: 'success',
-        title: 'Group Created!',
-        message: `${groupData.name} has been created successfully`,
-        onClick: () => handleChatSelect(newGroup.id)
-      });
+      if (response.data.success) {
+        const newChat = response.data.chat;
+        
+        // Transform API response to match frontend format
+        const transformedChat = {
+          id: newChat._id,
+          name: newChat.name,
+          type: newChat.type,
+          avatar: newChat.avatar,
+          members: newChat.participants?.map(p => ({
+            id: p.user._id || p.user,
+            name: p.user.name || 'Unknown',
+            online: p.user.isOnline || false
+          })) || [],
+          lastMessage: null,
+          unreadCount: 0,
+          isPinned: false,
+          isMuted: false,
+          isArchived: false,
+          isTyping: false,
+          updatedAt: new Date(newChat.updatedAt)
+        };
 
-      // Navigate to the new group
-      handleChatSelect(newGroup.id);
+        setChats(prev => [transformedChat, ...prev]);
+        
+        // Show success notification
+        showNotification({
+          type: 'success',
+          title: 'Group Created!',
+          message: `${groupData.name} has been created successfully`,
+          onClick: () => handleChatSelect(transformedChat.id)
+        });
+
+        // Navigate to the new group
+        handleChatSelect(transformedChat.id);
+      } else {
+        throw new Error(response.data.message || 'Failed to create group');
+      }
     } catch (error) {
       console.error('Failed to create group:', error);
       showNotification({
         type: 'error',
         title: 'Error',
-        message: 'Failed to create group. Please try again.'
+        message: error.response?.data?.message || 'Failed to create group. Please try again.'
       });
+    } finally {
+      setIsCreatingChat(false);
     }
   };
 
-  const handleStartChat = (targetUser) => {
-    // Check if chat already exists
-    const existingChat = chats.find(chat => 
-      chat.type === 'private' && 
-      chat.members?.some(member => member.id === targetUser.id)
-    );
+  const handleStartChat = async (targetUser) => {
+    if (isCreatingChat) return;
+    
+    try {
+      setIsCreatingChat(true);
+      
+      // Check if chat already exists
+      const existingChat = chats.find(chat => 
+        chat.type === 'private' && 
+        chat.members?.some(member => member.id === targetUser.id)
+      );
 
-    if (existingChat) {
-      handleChatSelect(existingChat.id);
-      setShowUserSearchModal(false);
-      return;
+      if (existingChat) {
+        handleChatSelect(existingChat.id);
+        setShowUserSearchModal(false);
+        setIsCreatingChat(false);
+        return;
+      }
+
+      // Create new private chat using API
+      const createData = {
+        type: 'private',
+        participants: [targetUser.id]
+      };
+
+      const response = await chatAPI.createChat(createData);
+      
+      if (response.data.success) {
+        const newChat = response.data.chat;
+        
+        // Transform API response to match frontend format
+        const transformedChat = {
+          id: newChat._id,
+          name: getChatDisplayName(newChat),
+          type: newChat.type,
+          avatar: newChat.avatar,
+          members: newChat.participants?.map(p => ({
+            id: p.user._id || p.user,
+            name: p.user.name || 'Unknown',
+            online: p.user.isOnline || false
+          })) || [],
+          lastMessage: null,
+          unreadCount: 0,
+          isPinned: false,
+          isMuted: false,
+          isArchived: false,
+          isTyping: false,
+          updatedAt: new Date(newChat.updatedAt)
+        };
+
+        setChats(prev => [transformedChat, ...prev]);
+        handleChatSelect(transformedChat.id);
+        setShowUserSearchModal(false);
+
+        showNotification({
+          type: 'success',
+          title: 'Chat Started!',
+          message: `You can now chat with ${targetUser.name}`,
+        });
+      } else {
+        throw new Error(response.data.message || 'Failed to create chat');
+      }
+    } catch (error) {
+      console.error('Failed to start chat:', error);
+      showNotification({
+        type: 'error',
+        title: 'Error',
+        message: error.response?.data?.message || 'Failed to start chat. Please try again.'
+      });
+    } finally {
+      setIsCreatingChat(false);
     }
-
-    // Create new chat
-    const newChat = {
-      id: `private-${Date.now()}`,
-      name: targetUser.name,
-      type: 'private',
-      avatar: targetUser.avatar,
-      members: [
-        { id: user?.id, name: user?.name, online: true },
-        { id: targetUser.id, name: targetUser.name, online: targetUser.online || false }
-      ],
-      lastMessage: null,
-      unreadCount: 0,
-      isPinned: false,
-      isMuted: false,
-      isArchived: false,
-      isTyping: false
-    };
-
-    setChats(prev => [newChat, ...prev]);
-    handleChatSelect(newChat.id);
-    setShowUserSearchModal(false);
-
-    showNotification({
-      type: 'success',
-      title: 'Chat Started!',
-      message: `You can now chat with ${targetUser.name}`,
-    });
   };
 
   const handleVoiceCall = (chat) => {

@@ -6,6 +6,7 @@ import {
   Clock, UserCheck, UserX, Mail, Phone, Video 
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { userAPI, friendAPI } from '../../services/api';
 import Avatar from '../ui/Avatar';
 import Button from '../ui/Button';
 
@@ -19,138 +20,169 @@ const UserSearchModal = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
   const [friends, setFriends] = useState([]);
   const [activeTab, setActiveTab] = useState('search'); // 'search', 'requests', 'friends'
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   
   const { user } = useAuth();
 
-  // Mock data - replace with real API calls
-  const mockUsers = [
-    {
-      id: '1',
-      name: 'Alice Johnson',
-      email: 'alice@example.com',
-      username: '@alice_j',
-      bio: 'Software Engineer at Tech Corp',
-      avatar: null,
-      online: true,
-      mutualFriends: 5,
-      status: 'none' // none, pending, friend, sent
-    },
-    {
-      id: '2',
-      name: 'Bob Smith',
-      email: 'bob@example.com',
-      username: '@bob_smith',
-      bio: 'Designer & Creative',
-      avatar: null,
-      online: false,
-      mutualFriends: 2,
-      status: 'friend'
-    },
-    {
-      id: '3',
-      name: 'Charlie Brown',
-      email: 'charlie@example.com',
-      username: '@charlie_b',
-      bio: 'Product Manager',
-      avatar: null,
-      online: true,
-      mutualFriends: 0,
-      status: 'sent'
+  // Load initial data when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadAllUsers();
+      loadCurrentUserData();
     }
-  ];
+  }, [isOpen]);
 
-  const mockFriendRequests = [
-    {
-      id: '4',
-      name: 'Diana Prince',
-      email: 'diana@example.com',
-      username: '@diana_p',
-      bio: 'Marketing Specialist',
-      avatar: null,
-      online: true,
-      mutualFriends: 3,
-      timestamp: new Date(Date.now() - 3600000)
-    },
-    {
-      id: '5',
-      name: 'Eve Wilson',
-      email: 'eve@example.com',
-      username: '@eve_w',
-      bio: 'UX Researcher',
-      avatar: null,
-      online: false,
-      mutualFriends: 1,
-      timestamp: new Date(Date.now() - 7200000)
+  const loadAllUsers = async () => {
+    try {
+      setIsLoading(true);
+      // Try the /all endpoint first, fallback if it doesn't exist
+      try {
+        const response = await userAPI.getAllUsers({ limit: 100 });
+        if (response.data.success) {
+          setAllUsers(response.data.users);
+          return;
+        }
+      } catch (error) {
+        // If /all endpoint doesn't exist, we'll use search with common letters
+        console.log('Using search endpoint as fallback');
+      }
+      
+      // Fallback: Try to get users by searching common letters
+      const searchQueries = ['a', 'e', 'i', 'o', 'u', 'te', 'us', 'ex'];
+      const allUsers = new Set();
+      
+      for (const query of searchQueries) {
+        try {
+          const response = await userAPI.searchUsers(query, 50);
+          if (response.data.success && response.data.users) {
+            response.data.users.forEach(user => allUsers.add(JSON.stringify(user)));
+          }
+        } catch (err) {
+          console.log(`Search for "${query}" failed:`, err);
+        }
+      }
+      
+      // Convert back to array of unique users
+      const uniqueUsers = Array.from(allUsers).map(userStr => JSON.parse(userStr));
+      setAllUsers(uniqueUsers);
+      
+    } catch (error) {
+      console.error('Failed to load users:', error);
+      // Fallback: set empty array to prevent errors
+      setAllUsers([]);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
 
-  const mockFriends = [
-    {
-      id: '6',
-      name: 'Frank Miller',
-      email: 'frank@example.com',
-      username: '@frank_m',
-      bio: 'Full Stack Developer',
-      avatar: null,
-      online: true,
-      lastSeen: new Date(),
-      status: 'Available'
-    },
-    {
-      id: '7',
-      name: 'Grace Lee',
-      email: 'grace@example.com',
-      username: '@grace_l',
-      bio: 'Data Scientist',
-      avatar: null,
-      online: false,
-      lastSeen: new Date(Date.now() - 1800000),
-      status: 'Busy'
+  const loadCurrentUserData = async () => {
+    try {
+      // Load friends and friend requests using dedicated APIs
+      const [friendsResponse, requestsResponse] = await Promise.all([
+        friendAPI.getFriends(),
+        friendAPI.getRequests()
+      ]);
+
+      if (friendsResponse.data.success) {
+        setFriends(friendsResponse.data.friends.map(f => ({
+          ...f,
+          id: f._id,
+          online: f.isOnline || false,
+          lastSeen: f.lastSeen,
+          status: f.status || 'Available'
+        })));
+      }
+
+      if (requestsResponse.data.success) {
+        setFriendRequests(requestsResponse.data.requests.map(req => ({
+          ...req,
+          id: req._id,
+          timestamp: req.requestSentAt,
+          mutualFriends: 0 // Could be calculated
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to load user data:', error);
     }
-  ];
+  };
+
 
   // Debounced search function
-  const debouncedSearch = useCallback((term) => {
+  const debouncedSearch = useCallback(async (term) => {
     setIsSearching(true);
-    // Simulate API call delay
-    setTimeout(() => {
-      if (term.trim()) {
-        const results = mockUsers.filter(u => 
-          u.name.toLowerCase().includes(term.toLowerCase()) ||
-          u.email.toLowerCase().includes(term.toLowerCase()) ||
-          u.username.toLowerCase().includes(term.toLowerCase())
-        );
+    
+    try {
+      if (term.trim().length >= 2) {
+        // Use API search for terms with 2+ characters
+        const response = await userAPI.searchUsers(term, 20);
+        if (response.data.success) {
+          const results = response.data.users.map(u => ({
+            ...u,
+            id: u._id,
+            mutualFriends: u.mutualFriendsCount || 0,
+            status: u.friendshipStatus || 'none'
+          }));
+          setSearchResults(results);
+        }
+      } else if (term.trim() === '') {
+        // Show all users when search is empty
+        const results = allUsers.map(u => ({
+          ...u,
+          id: u._id,
+          mutualFriends: 0,
+          status: 'none',
+          online: u.isOnline
+        }));
         setSearchResults(results);
       } else {
         setSearchResults([]);
       }
+    } catch (error) {
+      console.error('Search failed:', error);
+      // Fallback to local search
+      if (term.trim()) {
+        const results = allUsers.filter(u => 
+          u.name.toLowerCase().includes(term.toLowerCase()) ||
+          u.email?.toLowerCase().includes(term.toLowerCase()) ||
+          u.username?.toLowerCase().includes(term.toLowerCase())
+        ).map(u => ({
+          ...u,
+          id: u._id,
+          mutualFriends: 0,
+          status: 'none',
+          online: u.isOnline
+        }));
+        setSearchResults(results);
+      } else {
+        setSearchResults([]);
+      }
+    } finally {
       setIsSearching(false);
-    }, 500);
-  }, []);
-
-  useEffect(() => {
-    debouncedSearch(searchTerm);
-  }, [searchTerm, debouncedSearch]);
-
-  useEffect(() => {
-    if (isOpen) {
-      setFriendRequests(mockFriendRequests);
-      setFriends(mockFriends);
     }
-  }, [isOpen]);
+  }, [allUsers]);
+
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      debouncedSearch(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchTerm, debouncedSearch]);
 
   const handleSendFriendRequest = async (userId) => {
     try {
-      await onSendFriendRequest?.(userId);
+      await friendAPI.sendRequest(userId);
       setSearchResults(prev => 
         prev.map(user => 
           user.id === userId ? { ...user, status: 'sent' } : user
         )
       );
+      onSendFriendRequest?.(userId);
     } catch (error) {
       console.error('Failed to send friend request:', error);
     }
@@ -158,12 +190,13 @@ const UserSearchModal = ({
 
   const handleAcceptRequest = async (userId) => {
     try {
-      await onAcceptFriendRequest?.(userId);
+      await friendAPI.acceptRequest(userId);
       const acceptedUser = friendRequests.find(req => req.id === userId);
       if (acceptedUser) {
         setFriends(prev => [...prev, { ...acceptedUser, status: 'Available' }]);
         setFriendRequests(prev => prev.filter(req => req.id !== userId));
       }
+      onAcceptFriendRequest?.(userId);
     } catch (error) {
       console.error('Failed to accept friend request:', error);
     }
@@ -171,8 +204,9 @@ const UserSearchModal = ({
 
   const handleDeclineRequest = async (userId) => {
     try {
-      await onDeclineFriendRequest?.(userId);
+      await friendAPI.declineRequest(userId);
       setFriendRequests(prev => prev.filter(req => req.id !== userId));
+      onDeclineFriendRequest?.(userId);
     } catch (error) {
       console.error('Failed to decline friend request:', error);
     }
@@ -325,9 +359,9 @@ const UserSearchModal = ({
 
                 {!isSearching && searchResults.length > 0 && (
                   <div className="space-y-3">
-                    {searchResults.map((user) => (
+                    {searchResults.map((user, index) => (
                       <motion.div
-                        key={user.id}
+                        key={user.id || user._id || `search-${index}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -346,7 +380,7 @@ const UserSearchModal = ({
                                 {user.name}
                               </h3>
                               <span className="text-sm text-gray-500 dark:text-gray-400">
-                                {user.username}
+                                @{user.username}
                               </span>
                             </div>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -401,9 +435,9 @@ const UserSearchModal = ({
             <div className="p-6">
               {friendRequests.length > 0 ? (
                 <div className="space-y-3">
-                  {friendRequests.map((request) => (
+                  {friendRequests.map((request, index) => (
                     <motion.div
-                      key={request.id}
+                      key={request.id || request._id || `request-${index}`}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark-700 rounded-lg"
@@ -476,9 +510,9 @@ const UserSearchModal = ({
             <div className="p-6">
               {friends.length > 0 ? (
                 <div className="space-y-3">
-                  {friends.map((friend) => (
+                  {friends.map((friend, index) => (
                     <motion.div
-                      key={friend.id}
+                      key={friend.id || friend._id || `friend-${index}`}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark-700 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors"
@@ -508,6 +542,7 @@ const UserSearchModal = ({
                       </div>
                       <div className="flex space-x-2">
                         <Button
+                        
                           variant="ghost"
                           size="sm"
                           onClick={() => console.log('Voice call:', friend.name)}

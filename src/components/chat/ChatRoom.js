@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Phone, Video, MoreVertical, Search, Info, Archive, Delete, UserPlus, MessageCircle } from 'lucide-react';
 import { useSocket } from '../../contexts/SocketContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { messageAPI } from '../../services/api';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -24,43 +25,59 @@ const ChatRoom = ({
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   
   const messagesEndRef = useRef(null);
   const { socket } = useSocket();
   const { user } = useAuth();
 
-  // Mock messages for demo
+  // Load messages from API
   useEffect(() => {
-    if (chat) {
-      setMessages([
-        {
-          id: '1',
-          text: 'Hey! How are you doing?',
-          sender: { id: 'other-user', name: 'John Doe', avatar: null },
-          timestamp: new Date(Date.now() - 300000),
-          status: 'seen',
-          type: 'text'
-        },
-        {
-          id: '2',
-          text: 'I\'m doing great! Just working on some new features for ChatNest',
-          sender: { id: user?.id, name: user?.name },
-          timestamp: new Date(Date.now() - 240000),
-          status: 'seen',
-          type: 'text'
-        },
-        {
-          id: '3',
-          text: 'That sounds exciting! Can you tell me more about it?',
-          sender: { id: 'other-user', name: 'John Doe' },
-          timestamp: new Date(Date.now() - 180000),
-          status: 'delivered',
-          type: 'text',
-          reactions: [{ emoji: '👍', count: 1, users: [user?.id] }]
-        }
-      ]);
+    if (chat?.id) {
+      loadMessages();
     }
-  }, [chat, user]);
+  }, [chat?.id]);
+
+  const loadMessages = async () => {
+    try {
+      setIsLoadingMessages(true);
+      const response = await messageAPI.getMessages(chat.id);
+      
+      if (response.data.success) {
+        const transformedMessages = (response.data.messages || []).map(msg => {
+          // Safe access with fallbacks
+          const sender = msg.sender || {};
+          const senderId = typeof sender === 'object' ? sender._id : sender;
+          const senderName = typeof sender === 'object' ? sender.name : 'Unknown';
+          const senderAvatar = typeof sender === 'object' ? sender.avatar : null;
+          
+          return {
+            id: msg._id || msg.id || `temp_${Date.now()}_${Math.random()}`,
+            text: msg.content || '',
+            sender: {
+              id: senderId || 'unknown',
+              name: senderName || 'Unknown',
+              avatar: senderAvatar
+            },
+            timestamp: msg.createdAt ? new Date(msg.createdAt) : new Date(),
+            status: msg.status || 'delivered',
+            type: msg.type || 'text',
+            reactions: msg.reactions || [],
+            replyTo: msg.replyTo
+          };
+        });
+        
+        setMessages(transformedMessages);
+      }
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+      // Show empty state on error
+      setMessages([]);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
 
   // Auto scroll to bottom
   useEffect(() => {
@@ -71,28 +88,88 @@ const ChatRoom = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = (messageData) => {
-    const newMessage = {
-      id: Date.now().toString(),
-      text: messageData.text,
-      sender: { id: user?.id, name: user?.name, avatar: user?.avatar },
-      timestamp: new Date(),
-      status: 'sent',
-      type: messageData.type || 'text',
-      replyTo: messageData.replyTo,
-      files: messageData.files
-    };
-
-    setMessages(prev => [...prev, newMessage]);
+  const handleSendMessage = async (messageData) => {
+    if (isSending) return;
     
-    // Emit to socket if available
-    if (socket) {
-      socket.emit('send_message', {
-        chatId: chat.id,
-        message: newMessage
-      });
-    }
+    try {
+      setIsSending(true);
+      
+      // Create optimistic message for immediate UI update
+      const optimisticMessage = {
+        id: `temp_${Date.now()}`,
+        text: messageData.text,
+        sender: { id: user?.id, name: user?.name, avatar: user?.avatar },
+        timestamp: new Date(),
+        status: 'sending',
+        type: messageData.type || 'text',
+        replyTo: messageData.replyTo,
+        files: messageData.files
+      };
 
+      // Add optimistic message immediately
+      setMessages(prev => [...prev, optimisticMessage]);
+      
+      // Send to API
+      const response = await messageAPI.sendMessage({
+        chat: chat.id,
+        content: messageData.text,
+        type: messageData.type || 'text',
+        replyTo: messageData.replyTo?.id
+      });
+      
+      if (response.data.success) {
+        const serverMessage = response.data.data || response.data.message;
+        
+        if (serverMessage) {
+          // Safe access to server message properties
+          const sender = serverMessage.sender || {};
+          const senderId = typeof sender === 'object' ? sender._id : sender;
+          const senderName = typeof sender === 'object' ? sender.name : user?.name;
+          const senderAvatar = typeof sender === 'object' ? sender.avatar : user?.avatar;
+          
+          // Replace optimistic message with server response
+          setMessages(prev => prev.map(msg => 
+            msg.id === optimisticMessage.id 
+              ? {
+                  id: serverMessage._id || `sent_${Date.now()}`,
+                  text: serverMessage.content || messageData.text,
+                  sender: {
+                    id: senderId || user?.id,
+                    name: senderName || user?.name,
+                    avatar: senderAvatar || user?.avatar
+                  },
+                  timestamp: serverMessage.createdAt ? new Date(serverMessage.createdAt) : new Date(),
+                  status: 'sent',
+                  type: serverMessage.type || 'text',
+                  replyTo: serverMessage.replyTo
+                }
+              : msg
+          ));
+        }
+        
+        // Emit to socket for real-time updates to other users
+        if (socket && serverMessage) {
+          socket.emit('send_message', {
+            chatId: chat.id,
+            message: serverMessage
+          });
+        }
+      } else {
+        throw new Error(response.data.message || 'Failed to send message');
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      
+      // Update optimistic message to show error
+      setMessages(prev => prev.map(msg => 
+        msg.id === `temp_${Date.now()}` 
+          ? { ...msg, status: 'failed' }
+          : msg
+      ));
+    } finally {
+      setIsSending(false);
+    }
+    
     // Clear reply
     setReplyingTo(null);
   };
