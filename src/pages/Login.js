@@ -146,22 +146,6 @@ const Login = () => {
             </div>
           </form>
         </motion.div>
-
-        {/* Demo Credentials (Remove in production) */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800"
-        >
-          <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium mb-1">
-            Demo Credentials:
-          </p>
-          <p className="text-xs text-yellow-700 dark:text-yellow-300">
-            Email: demo@chatnest.com<br />
-            Password: demo123
-          </p>
-        </motion.div>
       </motion.div>
     </div>
   );
