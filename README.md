@@ -1,70 +1,181 @@
-# Getting Started with Create React App
+# 💬 ChatNest
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A modern, real-time chat application built with React.js and Node.js. Features include private messaging, group chats, file sharing, voice/video calls, and more.
 
-## Available Scripts
+![ChatNest Demo](https://via.placeholder.com/800x400/3B82F6/FFFFFF?text=ChatNest+Demo)
 
-In the project directory, you can run:
+## ✨ Features
 
-### `npm start`
+- 🔐 **Secure Authentication** - JWT-based auth with password reset
+- 💬 **Real-time Messaging** - Instant messaging with Socket.IO
+- 👥 **Group Chats** - Create and manage group conversations
+- 📁 **File Sharing** - Images, documents, audio, and video support
+- 📞 **Voice/Video Calls** - WebRTC-powered calling system
+- 😀 **Message Reactions** - Emoji reactions and replies
+- 🌙 **Dark/Light Theme** - Beautiful UI with theme switching
+- 👫 **Friend System** - Add friends and manage connections
+- 🔍 **Search** - Find users and search through messages
+- 📱 **Responsive Design** - Works on desktop and mobile
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## 🚀 Quick Start
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### Prerequisites
+- Node.js 18+
+- MongoDB
+- Cloudinary account (for file storage)
 
-### `npm test`
+### Installation
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/chatnest.git
+   cd chatnest
+   ```
 
-### `npm run build`
+2. **Setup Backend**
+   ```bash
+   cd backend
+   npm install
+   cp .env.example .env
+   # Edit .env with your configuration
+   npm run dev
+   ```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+3. **Setup Frontend**
+   ```bash
+   cd frontend
+   npm install
+   npm start
+   ```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+4. **Environment Variables**
+   ```env
+   # Backend (.env)
+   MONGODB_URI=mongodb://localhost:27017/chatnest
+   JWT_SECRET=your_jwt_secret
+   CLOUDINARY_CLOUD_NAME=your_cloud_name
+   CLOUDINARY_API_KEY=your_api_key
+   CLOUDINARY_API_SECRET=your_api_secret
+   
+   # Frontend (.env)
+   REACT_APP_API_URL=http://localhost:5000/api
+   REACT_APP_SOCKET_URL=http://localhost:5000
+   ```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## 🛠️ Tech Stack
 
-### `npm run eject`
+### Frontend
+- **React.js** - UI framework
+- **Socket.IO Client** - Real-time communication
+- **Tailwind CSS** - Styling
+- **Framer Motion** - Animations
+- **Lucide React** - Icons
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### Backend
+- **Node.js & Express** - Server framework
+- **MongoDB & Mongoose** - Database
+- **Socket.IO** - Real-time events
+- **JWT** - Authentication
+- **Cloudinary** - File storage
+- **Winston** - Logging
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## 📡 API Endpoints
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### Authentication
+- `POST /api/auth/register` - Register user
+- `POST /api/auth/login` - Login user
+- `GET /api/auth/verify` - Verify token
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Chats
+- `GET /api/chats` - Get user chats
+- `POST /api/chats` - Create chat/group
+- `GET /api/messages/:chatId` - Get messages
 
-## Learn More
+### Users
+- `GET /api/users/search` - Search users
+- `POST /api/friends/request` - Send friend request
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Upload
+- `POST /api/upload/avatar` - Upload avatar
+- `POST /api/upload/chat/:chatId` - Upload files
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## 🔌 Socket Events
 
-### Code Splitting
+### Client → Server
+- `join_room` - Join chat room
+- `send_message` - Send message
+- `typing` - Start typing
+- `initiate_call` - Start call
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Server → Client
+- `receive_message` - New message
+- `user_typing` - User typing
+- `incoming_call` - Incoming call
+- `user_online` - User online status
 
-### Analyzing the Bundle Size
+## 🚀 Deployment
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+### Using PM2
+```bash
+# Backend
+npm install -g pm2
+pm2 start server.js --name chatnest-backend
 
-### Making a Progressive Web App
+# Frontend (build first)
+npm run build
+pm2 serve build 3000 --name chatnest-frontend
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+### Using Docker
+```bash
+# Backend
+docker build -t chatnest-backend .
+docker run -p 5000:5000 chatnest-backend
 
-### Advanced Configuration
+# Frontend
+docker build -t chatnest-frontend .
+docker run -p 3000:3000 chatnest-frontend
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 📁 Project Structure
 
-### Deployment
+```
+chatnest/
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── contexts/
+│   │   ├── pages/
+│   │   └── services/
+│   └── package.json
+├── backend/
+│   ├── models/
+│   ├── routes/
+│   ├── middleware/
+│   ├── socket/
+│   └── server.js
+└── README.md
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## 🤝 Contributing
 
-### `npm run build` fails to minify
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Socket.IO for real-time communication
+- Cloudinary for file storage
+- Tailwind CSS for styling
+- The React and Node.js communities
+
+---
+
+⭐ **Star this repo if you found it helpful!**
